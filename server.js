@@ -1,63 +1,56 @@
 const express  = require('express');
 const crypto   = require('crypto');
 const path     = require('path');
+const fs       = require('fs');
 const fetch    = require('node-fetch');
 
-// ── DATABASE ──────────────────────────────────────────────
-let db;
-try {
-  const Database = require('better-sqlite3');
-  db = new Database(process.env.DB_PATH || path.join(__dirname, 'examforge.db'));
-  db.pragma('journal_mode = WAL');
-} catch(e) { console.error('DB error:', e.message); process.exit(1); }
+// ── DATA STORAGE (JSON files) ─────────────────────────────
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS codes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
-    pack TEXT NOT NULL,
-    credits INTEGER NOT NULL,
-    price_usd REAL NOT NULL,
-    status TEXT DEFAULT 'unused',
-    created_at TEXT DEFAULT (datetime('now')),
-    redeemed_at TEXT,
-    device_fp TEXT
-  );
-  CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    whatsapp TEXT NOT NULL,
-    pack TEXT NOT NULL,
-    credits INTEGER NOT NULL,
-    price_usd REAL NOT NULL,
-    code_id INTEGER,
-    status TEXT DEFAULT 'pending',
-    device_fp TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    sent_at TEXT,
-    FOREIGN KEY(code_id) REFERENCES codes(id)
-  );
-  CREATE TABLE IF NOT EXISTS devices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fp TEXT UNIQUE NOT NULL,
-    credits INTEGER DEFAULT 0,
-    free_used INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    last_seen TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS rate_limits (
-    ip TEXT UNIQUE NOT NULL,
-    attempts INTEGER DEFAULT 0,
-    blocked_until TEXT,
-    last_attempt TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS usage_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    device_fp TEXT,
-    pack TEXT,
-    tokens_est INTEGER,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
+const DB = {
+  _read: (file) => {
+    const p = path.join(DATA_DIR, file + '.json');
+    if (!fs.existsSync(p)) return [];
+    try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
+    catch { return []; }
+  },
+  _write: (file, data) => {
+    const p = path.join(DATA_DIR, file + '.json');
+    fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
+  },
+  codes: () => DB._read('codes'),
+  saveCode: (c) => { const cs = DB.codes(); cs.push(c); DB._write('codes', cs); return c; },
+  getCode: (code) => DB.codes().find(c => c.code === code),
+  updateCode: (code, upd) => {
+    const cs = DB.codes();
+    const idx = cs.findIndex(c => c.code === code);
+    if (idx >= 0) { cs[idx] = {...cs[idx], ...upd}; DB._write('codes', cs); }
+  },
+  orders: () => DB._read('orders'),
+  saveOrder: (o) => { const os = DB.orders(); os.push({...o, id: Date.now()}); DB._write('orders', os); return o; },
+  updateOrder: (id, upd) => {
+    const os = DB.orders();
+    const idx = os.findIndex(o => o.id === id);
+    if (idx >= 0) { os[idx] = {...os[idx], ...upd}; DB._write('orders', os); }
+  },
+  devices: () => DB._read('devices'),
+  getDevice: (fp) => DB.devices().find(d => d.fp === fp),
+  saveDevice: (d) => { const ds = DB.devices(); ds.push(d); DB._write('devices', ds); return d; },
+  updateDevice: (fp, upd) => {
+    const ds = DB.devices();
+    const idx = ds.findIndex(d => d.fp === fp);
+    if (idx >= 0) { ds[idx] = {...ds[idx], ...upd}; DB._write('devices', ds); }
+  },
+  rateLimits: () => DB._read('rateLimits'),
+  updateRateLimit: (ip, upd) => {
+    const rs = DB.rateLimits();
+    const idx = rs.findIndex(r => r.ip === ip);
+    if (idx >= 0) { rs[idx] = {...rs[idx], ...upd}; DB._write('rateLimits', rs); }
+    else { rs.push({ip, ...upd}); DB._write('rateLimits', rs); }
+  },
+  getRateLimit: (ip) => DB.rateLimits().find(r => r.ip === ip),
+};
 
 // ── CONFIG ────────────────────────────────────────────────
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'changeme';
@@ -74,14 +67,12 @@ const PACKS = {
 // ── EXPRESS SETUP ─────────────────────────────────────────
 const app = express();
 
-// CORS — must be FIRST, before every other middleware and route
+// CORS — BEFORE every route
 app.use(function(req, res, next) {
-  res.header('Access-Control-Allow-Origin',  '*');
+  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-admin-secret');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
@@ -96,20 +87,20 @@ function genCode(pack) {
 }
 
 function getOrCreateDevice(fp) {
-  let dev = db.prepare('SELECT * FROM devices WHERE fp=?').get(fp);
+  let dev = DB.getDevice(fp);
   if (!dev) {
-    db.prepare('INSERT INTO devices (fp) VALUES (?)').run(fp);
-    dev = db.prepare('SELECT * FROM devices WHERE fp=?').get(fp);
+    dev = { fp, credits: 0, free_used: 0, created_at: new Date().toISOString(), last_seen: new Date().toISOString() };
+    DB.saveDevice(dev);
   } else {
-    db.prepare("UPDATE devices SET last_seen=datetime('now') WHERE fp=?").run(fp);
+    DB.updateDevice(fp, { last_seen: new Date().toISOString() });
   }
   return dev;
 }
 
 function checkRateLimit(ip) {
-  let rl = db.prepare('SELECT * FROM rate_limits WHERE ip=?').get(ip);
+  let rl = DB.getRateLimit(ip);
   if (!rl) {
-    db.prepare('INSERT INTO rate_limits (ip,attempts) VALUES (?,1)').run(ip);
+    DB.updateRateLimit(ip, { attempts: 1, last_attempt: new Date().toISOString() });
     return { ok: true };
   }
   if (rl.blocked_until && new Date(rl.blocked_until) > new Date()) {
@@ -118,20 +109,19 @@ function checkRateLimit(ip) {
   }
   if (rl.attempts >= 5) {
     const bu = new Date(Date.now() + 3600000).toISOString();
-    db.prepare('UPDATE rate_limits SET blocked_until=?,attempts=0 WHERE ip=?').run(bu, ip);
+    DB.updateRateLimit(ip, { blocked_until: bu, attempts: 0 });
     return { ok: false, msg: 'Too many wrong attempts. Try again in 1 hour.' };
   }
-  db.prepare('UPDATE rate_limits SET attempts=attempts+1 WHERE ip=?').run(ip);
+  DB.updateRateLimit(ip, { attempts: (rl.attempts || 0) + 1 });
   return { ok: true };
 }
 
 function resetRateLimit(ip) {
-  db.prepare('UPDATE rate_limits SET attempts=0,blocked_until=NULL WHERE ip=?').run(ip);
+  DB.updateRateLimit(ip, { attempts: 0, blocked_until: null });
 }
 
 function isAdmin(req) {
-  return req.headers['x-admin-secret'] === ADMIN_SECRET ||
-         req.query.secret === ADMIN_SECRET;
+  return req.headers['x-admin-secret'] === ADMIN_SECRET || req.query.secret === ADMIN_SECRET;
 }
 
 // ── AI CALL (OpenRouter) ──────────────────────────────────
@@ -160,7 +150,7 @@ async function callAI(prompt) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  PUBLIC ROUTES
+//  ROUTES
 // ═══════════════════════════════════════════════════════════
 
 // Health / root
@@ -207,29 +197,24 @@ REQUIREMENTS:
 - For multiple choice: answer field must be just the letter (A, B, C, or D).
 - For true/false: answer field must be exactly "True" or "False".
 
-Return ONLY valid JSON — no markdown, no backticks, no extra text before or after:
-{"title":"Descriptive exam title","questions":[{"type":"multiple_choice","question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"answer":"A","explanation":"..."},{"type":"true_false","question":"...","options":[],"answer":"True","explanation":"..."},{"type":"short_answer","question":"...","options":[],"answer":"...","explanation":"..."}]}
+Return ONLY valid JSON:
+{"title":"...","questions":[{"type":"multiple_choice","question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"answer":"A","explanation":"..."},{"type":"true_false","question":"...","options":[],"answer":"True","explanation":"..."},{"type":"short_answer","question":"...","options":[],"answer":"...","explanation":"..."}]}
 
-LESSON CONTENT:
+LESSON:
 ${pdfText.slice(0, 14000)}`;
 
   try {
     const raw     = await callAI(prompt);
     const cleaned = raw.trim().replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
     const exam    = JSON.parse(cleaned);
-    if (!exam.questions?.length) throw new Error('No questions returned. Please try again.');
+    if (!exam.questions?.length) throw new Error('No questions returned.');
 
     // Deduct credit AFTER successful generation
     if (freeLeft > 0) {
-      db.prepare('UPDATE devices SET free_used=free_used+1 WHERE fp=?').run(deviceFp);
+      DB.updateDevice(deviceFp, { free_used: dev.free_used + 1 });
     } else {
-      db.prepare('UPDATE devices SET credits=credits-1 WHERE fp=?').run(deviceFp);
+      DB.updateDevice(deviceFp, { credits: dev.credits - 1 });
     }
-
-    // Log usage
-    db.prepare('INSERT INTO usage_log (device_fp,pack,tokens_est) VALUES (?,?,?)').run(
-      deviceFp, freeLeft > 0 ? 'free' : 'paid', Math.round(pdfText.length / 4)
-    );
 
     const updated  = getOrCreateDevice(deviceFp);
     res.json({
@@ -249,11 +234,18 @@ app.post('/api/order', (req, res) => {
   const { whatsapp, pack, deviceFp } = req.body;
   if (!whatsapp || !pack || !PACKS[pack])
     return res.status(400).json({ ok: false, msg: 'Missing fields.' });
-  const p  = PACKS[pack];
-  const id = db.prepare(
-    'INSERT INTO orders (whatsapp,pack,credits,price_usd,device_fp) VALUES (?,?,?,?,?)'
-  ).run(whatsapp.trim(), pack, p.credits, p.price, deviceFp || null).lastInsertRowid;
-  res.json({ ok: true, orderId: id });
+  const p = PACKS[pack];
+  const o = {
+    whatsapp: whatsapp.trim(),
+    pack,
+    credits: p.credits,
+    price_usd: p.price,
+    device_fp: deviceFp,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  };
+  DB.saveOrder(o);
+  res.json({ ok: true, orderId: Date.now() });
 });
 
 // POST /api/redeem — validate access code
@@ -266,14 +258,14 @@ app.post('/api/redeem', (req, res) => {
   if (!rl.ok) return res.status(429).json({ ok: false, msg: rl.msg });
 
   const cleaned = code.trim().toUpperCase().replace(/\s/g, '');
-  const row     = db.prepare('SELECT * FROM codes WHERE code=?').get(cleaned);
+  const row     = DB.getCode(cleaned);
   if (!row)            return res.status(404).json({ ok: false, msg: 'Invalid code. Please check and try again.' });
   if (row.status === 'used') return res.status(409).json({ ok: false, msg: 'This code has already been redeemed.' });
 
-  db.prepare("UPDATE codes SET status='used',redeemed_at=datetime('now'),device_fp=? WHERE id=?").run(deviceFp, row.id);
+  DB.updateCode(cleaned, { status: 'used', redeemed_at: new Date().toISOString(), device_fp: deviceFp });
   const dev        = getOrCreateDevice(deviceFp);
   const newCredits = dev.credits + row.credits;
-  db.prepare('UPDATE devices SET credits=? WHERE fp=?').run(newCredits, deviceFp);
+  DB.updateDevice(deviceFp, { credits: newCredits });
   resetRateLimit(ip);
 
   res.json({
@@ -291,59 +283,75 @@ app.post('/api/redeem', (req, res) => {
 
 app.get('/admin/api/stats', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
+  const orders = DB.orders();
+  const codes  = DB.codes();
   res.json({
     ok:           true,
-    pending:      db.prepare("SELECT COUNT(*) n FROM orders WHERE status='pending'").get().n,
-    sent:         db.prepare("SELECT COUNT(*) n FROM orders WHERE status='sent'").get().n,
-    revenue:      db.prepare("SELECT COALESCE(SUM(price_usd),0) s FROM orders WHERE status='sent'").get().s,
-    devices:      db.prepare('SELECT COUNT(*) n FROM devices').get().n,
-    credits_used: db.prepare("SELECT COALESCE(SUM(credits),0) s FROM codes WHERE status='used'").get().s,
-    total_orders: db.prepare('SELECT COUNT(*) n FROM orders').get().n,
+    pending:      orders.filter(o => o.status === 'pending').length,
+    sent:         orders.filter(o => o.status === 'sent').length,
+    revenue:      orders.filter(o => o.status === 'sent').reduce((s, o) => s + o.price_usd, 0),
+    devices:      DB.devices().length,
+    credits_used: codes.filter(c => c.status === 'used').reduce((s, c) => s + c.credits, 0),
+    total_orders: orders.length,
   });
 });
 
 app.get('/admin/api/orders', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
-  const orders = db.prepare(`
-    SELECT o.*, c.code, c.status AS code_status
-    FROM orders o LEFT JOIN codes c ON o.code_id = c.id
-    ORDER BY o.created_at DESC LIMIT 300
-  `).all();
-  res.json({ ok: true, orders });
+  const orders = DB.orders();
+  const codes  = DB.codes();
+  const result = orders.map(o => {
+    const code = codes.find(c => c.code === o.code);
+    return {...o, code_status: code?.status};
+  }).reverse().slice(0, 300);
+  res.json({ ok: true, orders: result });
 });
 
 app.post('/admin/api/generate-code', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
   const { pack, orderId } = req.body;
   if (!PACKS[pack]) return res.status(400).json({ ok: false, msg: 'Invalid pack.' });
-  const code   = genCode(pack);
-  const p      = PACKS[pack];
-  const codeId = db.prepare(
-    'INSERT INTO codes (code,pack,credits,price_usd) VALUES (?,?,?,?)'
-  ).run(code, pack, p.credits, p.price).lastInsertRowid;
-  if (orderId) db.prepare("UPDATE orders SET code_id=?,status='code_generated' WHERE id=?").run(codeId, orderId);
-  res.json({ ok: true, code, codeId, credits: p.credits });
+  const code = genCode(pack);
+  const p    = PACKS[pack];
+  const c    = {
+    code,
+    pack,
+    credits: p.credits,
+    price_usd: p.price,
+    status: 'unused',
+    created_at: new Date().toISOString(),
+  };
+  DB.saveCode(c);
+  if (orderId) {
+    const os = DB.orders();
+    const idx = os.findIndex(o => o.id === orderId);
+    if (idx >= 0) { os[idx].code = code; os[idx].status = 'code_generated'; DB._write('orders', os); }
+  }
+  res.json({ ok: true, code, codeId: Date.now(), credits: p.credits });
 });
 
 app.post('/admin/api/mark-sent', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
-  db.prepare("UPDATE orders SET status='sent',sent_at=datetime('now') WHERE id=?").run(req.body.orderId);
+  const os = DB.orders();
+  const idx = os.findIndex(o => o.id === req.body.orderId);
+  if (idx >= 0) { os[idx].status = 'sent'; os[idx].sent_at = new Date().toISOString(); DB._write('orders', os); }
   res.json({ ok: true });
 });
 
 app.delete('/admin/api/order/:id', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
-  db.prepare('DELETE FROM orders WHERE id=?').run(req.params.id);
+  const os = DB.orders();
+  DB._write('orders', os.filter(o => o.id !== parseInt(req.params.id)));
   res.json({ ok: true });
 });
 
-// Admin page
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../admin/index.html')));
 
 // ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`ExamForge backend v2.0 running on port ${PORT}`);
-  console.log(`AI model: ${AI_MODEL}`);
-  console.log(`AI key configured: ${AI_KEY ? 'YES' : 'NO — set AI_KEY env var!'}`);
-  console.log(`Free exams per device: ${FREE_EXAMS}`);
+  console.log(`✅ ExamForge backend v2.0 running on port ${PORT}`);
+  console.log(`📦 AI model: ${AI_MODEL}`);
+  console.log(`🔑 AI key configured: ${AI_KEY ? 'YES' : 'NO'}`);
+  console.log(`💾 Database: JSON files in ${DATA_DIR}`);
+  console.log(`🎁 Free exams per device: ${FREE_EXAMS}`);
 });
