@@ -77,7 +77,7 @@ app.use(function(req, res, next) {
 });
 
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, '../admin')));
+// Admin served via route below, not as static files
 
 // ── HELPERS ───────────────────────────────────────────────
 function genCode(pack) {
