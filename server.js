@@ -77,7 +77,6 @@ app.use(function(req, res, next) {
 });
 
 app.use(express.json({ limit: '2mb' }));
-// Admin served via route below, not as static files
 
 // ── HELPERS ───────────────────────────────────────────────
 function genCode(pack) {
@@ -345,7 +344,139 @@ app.delete('/admin/api/order/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../admin/index.html')));
+// ADMIN PAGE — Embedded HTML (no file needed)
+app.get('/admin', (req, res) => {
+  if (!isAdmin(req)) {
+    return res.status(401).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>ExamForge Admin</title></head>
+      <body style="font-family:system-ui;padding:40px;background:#0f0f0f;color:#f0ede8;text-align:center;">
+        <h1>🔐 Admin Login</h1>
+        <p>Enter your admin secret:</p>
+        <input type="password" id="secret" placeholder="Admin secret" style="padding:10px;width:200px;font-size:14px;" />
+        <button onclick="login()" style="padding:10px 20px;margin-left:10px;background:#e8c97a;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Login</button>
+        <script>
+          function login() {
+            const secret = document.getElementById('secret').value;
+            if (secret) window.location = '/admin?secret=' + encodeURIComponent(secret);
+          }
+          document.getElementById('secret').onkeypress = (e) => { if (e.key === 'Enter') login(); };
+        </script>
+      </body>
+      </html>
+    `);
+  }
+
+  // Fetch admin data and return dashboard
+  const stats = (() => {
+    const orders = DB.orders();
+    const codes  = DB.codes();
+    return {
+      pending:      orders.filter(o => o.status === 'pending').length,
+      sent:         orders.filter(o => o.status === 'sent').length,
+      revenue:      orders.filter(o => o.status === 'sent').reduce((s, o) => s + o.price_usd, 0),
+      devices:      DB.devices().length,
+      credits_used: codes.filter(c => c.status === 'used').reduce((s, c) => s + c.credits, 0),
+      total_orders: orders.length,
+    };
+  })();
+
+  const orders = DB.orders().reverse().slice(0, 50);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>ExamForge Admin Dashboard</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #f0ede8; padding: 20px; }
+        .header { max-width: 1200px; margin: 0 auto 30px; }
+        h1 { font-size: 28px; margin-bottom: 10px; }
+        .stats { max-width: 1200px; margin: 0 auto 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
+        .stat-label { font-size: 12px; color: #999; margin-bottom: 8px; text-transform: uppercase; }
+        .stat-value { font-size: 32px; font-weight: 700; color: #e8c97a; }
+        .orders { max-width: 1200px; margin: 0 auto; }
+        .order-table { width: 100%; border-collapse: collapse; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
+        .order-table th { background: #222; padding: 12px; text-align: left; font-weight: 600; border-bottom: 1px solid #333; }
+        .order-table td { padding: 12px; border-bottom: 1px solid #333; }
+        .order-table tr:last-child td { border-bottom: none; }
+        .status-pending { color: #f0a05a; }
+        .status-sent { color: #6fcf97; }
+        .btn { padding: 6px 12px; background: #e8c97a; color: #1a1208; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 2px; }
+        .btn:hover { opacity: 0.9; }
+        .logout { margin-top: 10px; }
+        a { color: #e8c97a; text-decoration: none; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📊 ExamForge Admin Dashboard</h1>
+        <p style="color: #999;">Welcome back!</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">Pending Orders</div>
+          <div class="stat-value">${stats.pending}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Orders Sent</div>
+          <div class="stat-value">${stats.sent}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Revenue</div>
+          <div class="stat-value">$${stats.revenue.toFixed(2)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Devices</div>
+          <div class="stat-value">${stats.devices}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Credits Issued</div>
+          <div class="stat-value">${stats.credits_used}</div>
+        </div>
+      </div>
+
+      <div class="orders">
+        <h2 style="margin-bottom: 15px;">📋 Recent Orders</h2>
+        ${orders.length === 0 ? '<p style="color:#999;">No orders yet</p>' : `
+          <table class="order-table">
+            <thead>
+              <tr>
+                <th>WhatsApp</th>
+                <th>Pack</th>
+                <th>Price</th>
+                <th>Status</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orders.map(o => `
+                <tr>
+                  <td>${o.whatsapp}</td>
+                  <td>${o.pack}</td>
+                  <td>$${o.price_usd}</td>
+                  <td class="status-${o.status}">${o.status.toUpperCase()}</td>
+                  <td>${new Date(o.created_at).toLocaleDateString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+
+      <div class="logout" style="max-width: 1200px; margin: 30px auto 0;">
+        <a href="/">← Back to app</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 // ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
