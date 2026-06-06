@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ExamForge Admin</title>
+<style>
+:root{--bg:#0f0f0f;--s1:#1a1a1a;--s2:#222;--s3:#2a2a2a;--bd:rgba(255,255,255,.1);--bd2:rgba(255,255,255,.16);--tx:#f0ede8;--tx2:#a8a49e;--tx3:#6b6860;--ac:#e8c97a;--ac2:#c4a85a;--acb:rgba(232,201,122,.1);--gn:#6fcf97;--gnb:rgba(111,207,151,.1);--gnbd:rgba(111,207,151,.35);--rd:#eb5757;--rdb:rgba(235,87,87,.1);--rdbd:rgba(235,87,87,.3);--bl:#56b4d3;--or:#f0a05a;--r:10px;--rs:7px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-box{background:var(--s1);border:1px solid var(--bd);border-radius:16px;padding:32px;width:100%;max-width:380px;text-align:center;}
+.login-logo{font-size:36px;margin-bottom:8px;}
+.login-title{font-size:22px;font-weight:700;color:var(--ac);margin-bottom:4px;}
+.login-sub{font-size:13px;color:var(--tx3);margin-bottom:24px;}
+.login-input{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:var(--rs);padding:12px 16px;color:var(--tx);font-family:inherit;font-size:14px;outline:none;margin-bottom:12px;}
+.login-input:focus{border-color:var(--ac);}
+.login-btn{width:100%;background:var(--ac);color:#1a1208;border:none;border-radius:var(--r);padding:13px;font-size:15px;font-weight:700;cursor:pointer;}
+.login-btn:hover{background:var(--ac2);}
+.login-err{font-size:12px;color:var(--rd);margin-top:8px;}
+/* MAIN */
+.app{display:none;}
+header{background:var(--s1);border-bottom:1px solid var(--bd);padding:14px 24px;display:flex;align-items:center;gap:12px;}
+.hlogo{font-size:18px;font-weight:700;color:var(--ac);}
+.hbadge{font-size:11px;background:var(--acb);border:1px solid rgba(232,201,122,.25);color:var(--ac);padding:2px 8px;border-radius:100px;}
+.hspc{flex:1;}
+.hlogout{background:none;border:1px solid var(--bd);border-radius:var(--rs);padding:5px 14px;color:var(--tx3);font-family:inherit;font-size:12px;cursor:pointer;}
+.hlogout:hover{color:var(--rd);border-color:var(--rdbd);}
+.container{max-width:1100px;margin:0 auto;padding:24px 20px;}
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px;}
+.stat{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;}
+.stat-val{font-size:28px;font-weight:700;color:var(--tx);margin-bottom:3px;}
+.stat-val.green{color:var(--gn);}
+.stat-val.amber{color:var(--ac);}
+.stat-val.blue{color:var(--bl);}
+.stat-lbl{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;}
+/* TABS */
+.tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:12px;}
+.tab{padding:7px 18px;border-radius:var(--rs);border:1px solid transparent;background:transparent;color:var(--tx2);font-family:inherit;font-size:13px;cursor:pointer;transition:all .15s;}
+.tab:hover{color:var(--tx);}
+.tab.active{background:var(--acb);border-color:rgba(232,201,122,.3);color:var(--ac);font-weight:500;}
+/* FILTER BAR */
+.filter-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.filter-btn{padding:5px 14px;border-radius:100px;border:1px solid var(--bd);background:transparent;color:var(--tx3);font-family:inherit;font-size:12px;cursor:pointer;}
+.filter-btn.active{background:var(--acb);border-color:rgba(232,201,122,.3);color:var(--ac);font-weight:500;}
+.filter-btn.pending-f.active{background:var(--rdb);border-color:var(--rdbd);color:var(--rd);}
+.filter-btn.sent-f.active{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.search-input{flex:1;min-width:180px;background:var(--s2);border:1px solid var(--bd);border-radius:var(--rs);padding:6px 12px;color:var(--tx);font-family:inherit;font-size:13px;outline:none;}
+.search-input:focus{border-color:var(--ac);}
+.refresh-btn{padding:6px 14px;border-radius:var(--rs);border:1px solid var(--bd);background:var(--s2);color:var(--tx2);font-family:inherit;font-size:12px;cursor:pointer;}
+.refresh-btn:hover{color:var(--tx);}
+/* ORDERS TABLE */
+.orders-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:9px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx3);border-bottom:1px solid var(--bd);background:var(--s1);white-space:nowrap;}
+td{padding:11px 12px;border-bottom:1px solid var(--bd);color:var(--tx2);vertical-align:middle;}
+tr:hover td{background:rgba(255,255,255,.02);}
+.status-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 9px;border-radius:100px;border:1px solid;white-space:nowrap;}
+.status-pill.pending{background:var(--rdb);border-color:var(--rdbd);color:var(--rd);}
+.status-pill.code_generated{background:rgba(240,160,90,.1);border-color:rgba(240,160,90,.3);color:var(--or);}
+.status-pill.sent{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.pack-pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;border:1px solid;}
+.pack-pill.starter{background:rgba(86,180,211,.1);border-color:rgba(86,180,211,.3);color:var(--bl);}
+.pack-pill.popular{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.pack-pill.power{background:var(--acb);border-color:rgba(232,201,122,.3);color:var(--ac);}
+.code-cell{font-family:'Courier New',monospace;font-size:12px;font-weight:600;color:var(--ac);letter-spacing:.05em;}
+.wa-link{color:var(--gn);text-decoration:none;font-weight:500;}
+.wa-link:hover{text-decoration:underline;}
+td.actions{white-space:nowrap;}
+/* ACTION BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:var(--rs);border:1px solid;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn:active{opacity:.8;}
+.btn-gen{background:var(--acb);border-color:rgba(232,201,122,.3);color:var(--ac);}
+.btn-gen:hover{background:rgba(232,201,122,.18);}
+.btn-wa{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.btn-wa:hover{background:rgba(111,207,151,.2);}
+.btn-done{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.btn-done:hover{background:rgba(111,207,151,.2);}
+.btn-del{background:var(--rdb);border-color:var(--rdbd);color:var(--rd);}
+.btn-del:hover{background:rgba(235,87,87,.2);}
+.btn-copy{background:var(--s2);border-color:var(--bd2);color:var(--tx2);}
+.btn-copy:hover{color:var(--tx);}
+/* GENERATE CODE PANEL */
+.gen-panel{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:20px 22px;margin-bottom:20px;}
+.gen-panel h3{font-size:14px;font-weight:600;color:var(--tx);margin-bottom:14px;}
+.gen-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+.gen-field{display:flex;flex-direction:column;gap:5px;}
+.gen-field label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;}
+.gen-select{background:var(--s2);border:1px solid var(--bd);border-radius:var(--rs);padding:8px 32px 8px 12px;color:var(--tx);font-family:inherit;font-size:13px;outline:none;appearance:none;min-width:160px;}
+.gen-select:focus{border-color:var(--ac);}
+.gen-result{background:var(--s2);border:1px solid var(--gnbd);border-radius:var(--r);padding:14px 18px;margin-top:14px;display:none;}
+.gen-result.vis{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.gen-code-big{font-family:'Courier New',monospace;font-size:22px;font-weight:700;color:var(--ac);letter-spacing:.08em;}
+.gen-info{font-size:12px;color:var(--tx3);}
+/* EMPTY */
+.empty{text-align:center;padding:48px 20px;color:var(--tx3);font-size:14px;}
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--s3);color:var(--tx);padding:9px 20px;border-radius:100px;font-size:13px;font-weight:500;border:1px solid var(--bd2);z-index:999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;}
+/* MODAL */
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:center;justify-content:center;}
+.modal-ov.vis{display:flex;}
+.modal{background:var(--s1);border:1px solid var(--bd2);border-radius:14px;padding:24px;max-width:420px;width:90%;}
+.modal h3{font-size:16px;font-weight:600;color:var(--tx);margin-bottom:6px;}
+.modal p{font-size:13px;color:var(--tx2);margin-bottom:18px;line-height:1.6;}
+.modal-code{font-family:'Courier New',monospace;font-size:20px;font-weight:700;color:var(--ac);letter-spacing:.08em;background:var(--s2);border:1px solid var(--bd2);border-radius:var(--rs);padding:12px 16px;text-align:center;margin-bottom:16px;}
+.modal-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.modal-btn{flex:1;padding:10px;border-radius:var(--rs);border:1px solid;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;text-align:center;}
+.modal-btn.wa{background:var(--gnb);border-color:var(--gnbd);color:var(--gn);}
+.modal-btn.copy{background:var(--acb);border-color:rgba(232,201,122,.3);color:var(--ac);}
+.modal-btn.done{background:transparent;border-color:var(--bd);color:var(--tx2);}
+.modal-btn:hover{opacity:.8;}
+/* CODES TAB */
+.codes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.code-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px;}
+.code-card.used{opacity:.5;}
+.cc-code{font-family:'Courier New',monospace;font-size:15px;font-weight:700;color:var(--ac);margin-bottom:6px;}
+.cc-meta{font-size:11px;color:var(--tx3);display:flex;gap:10px;flex-wrap:wrap;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-box">
+    <div class="login-logo">📚</div>
+    <div class="login-title">ExamForge Admin</div>
+    <div class="login-sub">Enter your admin secret to continue</div>
+    <input class="login-input" type="password" id="login-secret" placeholder="Admin secret…" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="main-app">
+  <header>
+    <div class="hlogo">ExamForge</div>
+    <div class="hbadge">Admin Dashboard</div>
+    <div class="hspc"></div>
+    <button class="hlogout" onclick="logout()">Sign out</button>
+  </header>
+
+  <div class="container">
+    <!-- STATS -->
+    <div class="stats" id="stats-row">
+      <div class="stat"><div class="stat-val amber" id="st-pending">—</div><div class="stat-lbl">Pending orders</div></div>
+      <div class="stat"><div class="stat-val green" id="st-sent">—</div><div class="stat-lbl">Codes sent</div></div>
+      <div class="stat"><div class="stat-val green" id="st-revenue">—</div><div class="stat-lbl">Revenue sent ($)</div></div>
+      <div class="stat"><div class="stat-val blue" id="st-devices">—</div><div class="stat-lbl">Total devices</div></div>
+      <div class="stat"><div class="stat-val" id="st-credits">—</div><div class="stat-lbl">Credits redeemed</div></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('orders')">📋 Orders</button>
+      <button class="tab" onclick="switchTab('codes')">🔑 All Codes</button>
+      <button class="tab" onclick="switchTab('generate')">⚡ Quick Generate</button>
+    </div>
+
+    <!-- ORDERS TAB -->
+    <div id="tab-orders">
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+        <button class="filter-btn pending-f" onclick="setFilter('pending',this)">⚠ Pending</button>
+        <button class="filter-btn" onclick="setFilter('code_generated',this)">🔑 Code ready</button>
+        <button class="filter-btn sent-f" onclick="setFilter('sent',this)">✓ Sent</button>
+        <input class="search-input" type="text" id="search-input" placeholder="Search WhatsApp, pack…" oninput="renderOrders()">
+        <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+      </div>
+      <div class="orders-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>WhatsApp</th><th>Pack</th><th>Credits</th><th>Price</th>
+            <th>Status</th><th>Code</th><th>Time</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="orders-tbody"></tbody>
+        </table>
+        <div class="empty" id="orders-empty" style="display:none;">No orders yet</div>
+      </div>
+    </div>
+
+    <!-- CODES TAB -->
+    <div id="tab-codes" style="display:none;">
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setCodesFilter('all',this)">All codes</button>
+        <button class="filter-btn" onclick="setCodesFilter('unused',this)">Unused</button>
+        <button class="filter-btn" onclick="setCodesFilter('used',this)">Used</button>
+        <button class="refresh-btn" onclick="loadCodes()">↻ Refresh</button>
+      </div>
+      <div class="codes-grid" id="codes-grid"></div>
+      <div class="empty" id="codes-empty" style="display:none;">No codes generated yet</div>
+    </div>
+
+    <!-- GENERATE TAB -->
+    <div id="tab-generate" style="display:none;">
+      <div class="gen-panel">
+        <h3>Generate a standalone access code (no order needed)</h3>
+        <div class="gen-row">
+          <div class="gen-field">
+            <label>Pack</label>
+            <select class="gen-select" id="gen-pack">
+              <option value="starter">Starter — 100 credits ($5)</option>
+              <option value="popular">Popular — 300 credits ($12)</option>
+              <option value="power">Power — 600 credits ($20)</option>
+            </select>
+          </div>
+          <button class="btn btn-gen" style="padding:9px 18px;font-size:13px;" onclick="quickGenerate()">⚡ Generate Code</button>
+        </div>
+        <div class="gen-result" id="gen-result">
+          <div>
+            <div class="gen-code-big" id="gen-code-display"></div>
+            <div class="gen-info" id="gen-code-info"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-copy" onclick="copyCode()">📋 Copy</button>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:16px 20px;">
+        <h3 style="font-size:14px;font-weight:600;color:var(--tx);margin-bottom:8px;">How to use</h3>
+        <p style="font-size:13px;color:var(--tx2);line-height:1.7;">1. Confirm payment received in PayPal app<br>2. Come here and generate a code for that pack<br>3. Copy the code and send via WhatsApp to the user<br>4. Or go to the Orders tab to find their number and tap "Send via WhatsApp"</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SEND CODE MODAL -->
+<div class="modal-ov" id="send-modal">
+  <div class="modal">
+    <h3>Send code to user</h3>
+    <p id="modal-desc">Send this access code to the user via WhatsApp.</p>
+    <div class="modal-code" id="modal-code"></div>
+    <div class="modal-actions">
+      <button class="modal-btn wa" onclick="openWhatsApp()">💬 Open WhatsApp</button>
+      <button class="modal-btn copy" onclick="copyModalCode()">📋 Copy Code</button>
+      <button class="modal-btn done" onclick="markSent()">✓ Mark as Sent</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const BASE = window.location.origin;
+let SECRET = '';
+let allOrders = [];
+let allCodes  = [];
+let orderFilter = 'all';
+let codesFilter = 'all';
+let activeModal = null; // {orderId, code, whatsapp, pack, credits}
+let lastGenCode = '';
+
+// ── AUTH ─────────────────────────────────────────────────
+async function doLogin() {
+  const s = document.getElementById('login-secret').value.trim();
+  if (!s) return;
+  try {
+    const r = await fetch(BASE+'/admin/api/stats', { headers: { 'x-admin-secret': s } });
+    if (!r.ok) throw new Error('wrong');
+    SECRET = s;
+    sessionStorage.setItem('ef_admin_secret', s);
+    document.getElementById('login-wrap').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    loadAll();
+  } catch {
+    document.getElementById('login-err').textContent = 'Wrong secret. Try again.';
+  }
+}
+function logout() {
+  SECRET = ''; sessionStorage.removeItem('ef_admin_secret');
+  document.getElementById('login-wrap').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+}
+window.addEventListener('load', () => {
+  const saved = sessionStorage.getItem('ef_admin_secret');
+  if (saved) { document.getElementById('login-secret').value = saved; doLogin(); }
+  document.getElementById('login-secret').focus();
+});
+
+// ── DATA ─────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const r = await fetch(BASE+path, { ...opts, headers: { 'x-admin-secret': SECRET, 'Content-Type': 'application/json', ...(opts.headers||{}) } });
+  return r.json();
+}
+async function loadAll() {
+  await Promise.all([loadStats(), loadOrders(), loadCodes()]);
+}
+async function loadStats() {
+  const d = await api('/admin/api/stats');
+  if (!d.ok) return;
+  document.getElementById('st-pending').textContent  = d.pending;
+  document.getElementById('st-sent').textContent     = d.sent;
+  document.getElementById('st-revenue').textContent  = '$'+d.totalRevenue.toFixed(2);
+  document.getElementById('st-devices').textContent  = d.totalDevices;
+  document.getElementById('st-credits').textContent  = d.totalCredits;
+}
+async function loadOrders() {
+  const d = await api('/admin/api/orders');
+  if (!d.ok) return;
+  allOrders = d.orders;
+  renderOrders();
+}
+async function loadCodes() {
+  // No dedicated endpoint; we parse from orders
+  renderCodes();
+}
+
+// ── RENDER ORDERS ─────────────────────────────────────────
+function renderOrders() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  let orders = allOrders.filter(o => {
+    if (orderFilter !== 'all' && o.status !== orderFilter) return false;
+    if (search && !o.whatsapp.includes(search) && !o.pack.includes(search)) return false;
+    return true;
+  });
+  const tbody = document.getElementById('orders-tbody');
+  const empty = document.getElementById('orders-empty');
+  if (!orders.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = orders.map(o => {
+    const packClass = o.pack;
+    const packLabel = {starter:'Starter',popular:'Popular',power:'Power'}[o.pack]||o.pack;
+    const waNum = o.whatsapp.replace(/\D/g,'');
+    const waMsg = encodeURIComponent(`Hi! Here is your ExamForge access code:\n\n${o.code||'(generate code first)'}\n\nEnter this in the app to unlock ${o.credits} exam credits.\n\nThank you! 🎓`);
+    const waLink = `https://wa.me/${waNum}?text=${waMsg}`;
+    const timeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '—';
+    const actions = o.status === 'pending'
+      ? `<button class="btn btn-gen" onclick="generateForOrder(${o.id},'${o.pack}')">⚡ Gen Code</button>`
+      : o.status === 'code_generated'
+      ? `<button class="btn btn-wa" onclick="openSendModal(${o.id},'${o.code}','${o.whatsapp}','${o.pack}',${o.credits})">💬 Send</button>`
+      : `<button class="btn btn-done" style="cursor:default;opacity:.6;">✓ Done</button>`;
+    return `<tr>
+      <td style="color:var(--tx3)">#${o.id}</td>
+      <td><a class="wa-link" href="${waLink}" target="_blank">+${waNum}</a></td>
+      <td><span class="pack-pill ${packClass}">${packLabel}</span></td>
+      <td style="color:var(--tx)">${o.credits}</td>
+      <td style="color:var(--gn)">$${o.price_usd}</td>
+      <td><span class="status-pill ${o.status}">${o.status.replace('_',' ')}</span></td>
+      <td><span class="code-cell">${o.code||'—'}</span>${o.code?`<button class="btn btn-copy" style="margin-left:6px;" onclick="copy('${o.code}')">📋</button>`:''}</td>
+      <td style="color:var(--tx3);font-size:11px;">${timeStr}</td>
+      <td class="actions">${actions} <button class="btn btn-del" onclick="delOrder(${o.id})">🗑</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function setFilter(f, el) {
+  orderFilter = f;
+  document.querySelectorAll('.filter-bar .filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderOrders();
+}
+
+// ── RENDER CODES ──────────────────────────────────────────
+function renderCodes() {
+  const codes = allOrders.filter(o => o.code).map(o => ({
+    code: o.code, pack: o.pack, credits: o.credits, status: o.code_status||o.status,
+    redeemed: o.status === 'sent' ? o.sent_at : null, created: o.created_at
+  }));
+  const filtered = codesFilter === 'all' ? codes : codes.filter(c => codesFilter === 'used' ? c.status==='sent' : c.status!=='sent');
+  const grid = document.getElementById('codes-grid');
+  const empty = document.getElementById('codes-empty');
+  if (!filtered.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  grid.innerHTML = filtered.map(c => `
+    <div class="code-card ${c.status==='sent'?'used':''}">
+      <div class="cc-code">${c.code}</div>
+      <div class="cc-meta">
+        <span class="pack-pill ${c.pack}">${c.pack}</span>
+        <span>${c.credits} credits</span>
+        <span>${c.status==='sent'?'✓ Used':'Unused'}</span>
+      </div>
+    </div>`).join('');
+}
+function setCodesFilter(f, el) {
+  codesFilter = f;
+  document.querySelectorAll('#tab-codes .filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderCodes();
+}
+
+// ── ACTIONS ───────────────────────────────────────────────
+async function generateForOrder(orderId, pack) {
+  const d = await api('/admin/api/generate-code', { method:'POST', body: JSON.stringify({pack, orderId}) });
+  if (!d.ok) { showToast('Error: '+(d.msg||'failed')); return; }
+  showToast('Code generated: '+d.code);
+  await loadAll();
+  // Auto-open send modal
+  const order = allOrders.find(o=>o.id===orderId);
+  if (order) openSendModal(orderId, d.code, order.whatsapp, pack, d.credits);
+}
+async function quickGenerate() {
+  const pack = document.getElementById('gen-pack').value;
+  const d = await api('/admin/api/generate-code', { method:'POST', body: JSON.stringify({pack}) });
+  if (!d.ok) { showToast('Error'); return; }
+  lastGenCode = d.code;
+  document.getElementById('gen-code-display').textContent = d.code;
+  document.getElementById('gen-code-info').textContent = `${d.credits} credits · ${pack} pack`;
+  document.getElementById('gen-result').className = 'gen-result vis';
+  showToast('Code generated!');
+  loadAll();
+}
+function copyCode() { copy(lastGenCode); }
+async function delOrder(id) {
+  if (!confirm('Delete this order?')) return;
+  await api('/admin/api/order/'+id, { method:'DELETE' });
+  await loadAll();
+  showToast('Order deleted');
+}
+
+// ── SEND MODAL ────────────────────────────────────────────
+function openSendModal(orderId, code, whatsapp, pack, credits) {
+  activeModal = { orderId, code, whatsapp, pack, credits };
+  const packLabel = {starter:'Starter (100 credits)',popular:'Popular (300 credits)',power:'Power (600 credits)'}[pack]||pack;
+  document.getElementById('modal-desc').textContent = `Send to ${whatsapp} — ${packLabel}`;
+  document.getElementById('modal-code').textContent = code;
+  document.getElementById('send-modal').classList.add('vis');
+}
+function closeModal() { document.getElementById('send-modal').classList.remove('vis'); activeModal=null; }
+function openWhatsApp() {
+  if (!activeModal) return;
+  const waNum = activeModal.whatsapp.replace(/\D/g,'');
+  const msg = encodeURIComponent(`Hi! Here is your ExamForge access code:\n\n${activeModal.code}\n\nEnter this in the app to unlock ${activeModal.credits} exam credits. It can only be used once.\n\nThank you! 🎓`);
+  window.open(`https://wa.me/${waNum}?text=${msg}`, '_blank');
+}
+function copyModalCode() { if(activeModal) copy(activeModal.code); }
+async function markSent() {
+  if (!activeModal) return;
+  await api('/admin/api/mark-sent', { method:'POST', body: JSON.stringify({orderId: activeModal.orderId}) });
+  closeModal(); await loadAll(); showToast('Marked as sent ✓');
+}
+document.getElementById('send-modal').addEventListener('click', e => { if(e.target===document.getElementById('send-modal')) closeModal(); });
+
+// ── TABS ──────────────────────────────────────────────────
+function switchTab(t) {
+  ['orders','codes','generate'].forEach(tab => {
+    document.getElementById('tab-'+tab).style.display = tab===t ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach((btn,i) => {
+    btn.classList.toggle('active', ['orders','codes','generate'][i]===t);
+  });
+  if (t==='codes') renderCodes();
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+function copy(text) { navigator.clipboard.writeText(text).then(()=>showToast('Copied!')).catch(()=>showToast('Copy failed')); }
+let _tt;
+function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.style.opacity='1'; clearTimeout(_tt); _tt=setTimeout(()=>t.style.opacity='0',2200); }
+</script>
+</body>
+</html>
