@@ -228,7 +228,7 @@ ${pdfText.slice(0, 14000)}`;
   }
 });
 
-// POST /api/order — save WhatsApp + pack before PayPal
+// POST /api/order — save order after PayPal payment
 app.post('/api/order', (req, res) => {
   const { whatsapp, pack, deviceFp } = req.body;
   if (!whatsapp || !pack || !PACKS[pack])
@@ -341,6 +341,19 @@ app.delete('/admin/api/order/:id', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
   const os = DB.orders();
   DB._write('orders', os.filter(o => o.id !== parseInt(req.params.id)));
+  res.json({ ok: true });
+});
+
+
+// POST /admin/api/verify-payment — verify payment in PayPal and move to pending
+app.post('/admin/api/verify-payment', (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ ok: false });
+  const os = DB.orders();
+  const idx = os.findIndex(o => o.id === req.body.orderId);
+  if (idx >= 0) { 
+    os[idx].verified_at = new Date().toISOString(); 
+    DB._write('orders', os); 
+  }
   res.json({ ok: true });
 });
 
@@ -481,7 +494,11 @@ app.get('/admin', (req, res) => {
               </div>
             </div>
             <div class="order-actions">
-              ${o.status === 'pending' ? `
+              ${o.status === 'pending' && !o.verified_at ? `
+                <button class="btn" style="background:#f0a05a;" onclick="verifyPayment(${o.id})">🔍 Verify Payment</button>
+                <span style="font-size:11px;color:#999;margin-left:10px;">⚠️ Check PayPal before generating code</span>
+              ` : ''}
+              ${o.status === 'pending' && o.verified_at ? `
                 <button class="btn" onclick="genCode(${o.id}, '${o.pack}')">⚡ Gen Code</button>
               ` : ''}
               ${o.code ? `
@@ -556,6 +573,25 @@ app.get('/admin', (req, res) => {
           .then(d => {
             if (d.ok) {
               showMsg(orderId, '✅ Marked as sent!', 'success');
+              setTimeout(() => location.reload(), 1500);
+            } else {
+              showMsg(orderId, '❌ Error', 'error');
+            }
+          })
+          .catch(e => showMsg(orderId, '❌ Network error', 'error'));
+        }
+
+        function verifyPayment(orderId) {
+          showMsg(orderId, '⏳ Verifying...', 'loading');
+          fetch('/admin/api/verify-payment', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'x-admin-secret': secret},
+            body: JSON.stringify({orderId})
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.ok) {
+              showMsg(orderId, '✅ Payment verified! Now generate code', 'success');
               setTimeout(() => location.reload(), 1500);
             } else {
               showMsg(orderId, '❌ Error', 'error');
