@@ -496,7 +496,8 @@ app.get('/admin', (req, res) => {
             <div class="order-actions">
               ${o.status === 'pending' && !o.verified_at ? `
                 <button class="btn" style="background:#f0a05a;" onclick="verifyPayment(${o.id})">🔍 Verify Payment</button>
-                <span style="font-size:11px;color:#999;margin-left:10px;">⚠️ Check PayPal before generating code</span>
+                <button class="btn btn-secondary" style="background:#333;color:#eb5757;border-color:#555;" onclick="deleteOrder(${o.id}, '${o.whatsapp}')">🗑 Delete</button>
+                <span style="font-size:11px;color:#999;margin-left:10px;">⚠️ Check PayPal or delete if unpaid</span>
               ` : ''}
               ${o.status === 'pending' && o.verified_at ? `
                 <button class="btn" onclick="genCode(${o.id}, '${o.pack}')">⚡ Gen Code</button>
@@ -595,6 +596,25 @@ app.get('/admin', (req, res) => {
               setTimeout(() => location.reload(), 1500);
             } else {
               showMsg(orderId, '❌ Error', 'error');
+            }
+          })
+          .catch(e => showMsg(orderId, '❌ Network error', 'error'));
+        }
+
+        function deleteOrder(orderId, wa) {
+          if (!confirm('Delete order from ' + wa + '? This cannot be undone.')) return;
+          showMsg(orderId, '⏳ Deleting...', 'loading');
+          fetch('/admin/api/order/' + orderId, {
+            method: 'DELETE',
+            headers: {'x-admin-secret': secret}
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.ok) {
+              showMsg(orderId, '✅ Order deleted', 'success');
+              setTimeout(() => location.reload(), 1000);
+            } else {
+              showMsg(orderId, '❌ Error deleting', 'error');
             }
           })
           .catch(e => showMsg(orderId, '❌ Network error', 'error'));
