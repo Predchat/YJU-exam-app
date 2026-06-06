@@ -123,6 +123,12 @@ function isAdmin(req) {
   return req.headers['x-admin-secret'] === ADMIN_SECRET || req.query.secret === ADMIN_SECRET;
 }
 
+function countOnlineDevices() {
+  const now = new Date();
+  const fiveMinutesAgo = new Date(now - 5 * 60 * 1000);
+  return DB.devices().filter(d => new Date(d.last_seen) > fiveMinutesAgo).length;
+}
+
 // ── AI CALL (OpenRouter) ──────────────────────────────────
 async function callAI(prompt) {
   if (!AI_KEY) throw new Error('AI_KEY not set on server. Contact support.');
@@ -228,7 +234,7 @@ ${pdfText.slice(0, 14000)}`;
   }
 });
 
-// POST /api/order — save order after PayPal payment
+// POST /api/order — save WhatsApp + pack before PayPal
 app.post('/api/order', (req, res) => {
   const { whatsapp, pack, deviceFp } = req.body;
   if (!whatsapp || !pack || !PACKS[pack])
@@ -290,6 +296,7 @@ app.get('/admin/api/stats', (req, res) => {
     sent:         orders.filter(o => o.status === 'sent').length,
     revenue:      orders.filter(o => o.status === 'sent').reduce((s, o) => s + o.price_usd, 0),
     devices:      DB.devices().length,
+    online:       countOnlineDevices(),
     credits_used: codes.filter(c => c.status === 'used').reduce((s, c) => s + c.credits, 0),
     total_orders: orders.length,
   });
@@ -337,15 +344,6 @@ app.post('/admin/api/mark-sent', (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/admin/api/order/:id', (req, res) => {
-  if (!isAdmin(req)) return res.status(403).json({ ok: false });
-  const os = DB.orders();
-  DB._write('orders', os.filter(o => o.id !== parseInt(req.params.id)));
-  res.json({ ok: true });
-});
-
-
-// POST /admin/api/verify-payment — verify payment in PayPal and move to pending
 app.post('/admin/api/verify-payment', (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ ok: false });
   const os = DB.orders();
@@ -354,6 +352,13 @@ app.post('/admin/api/verify-payment', (req, res) => {
     os[idx].verified_at = new Date().toISOString(); 
     DB._write('orders', os); 
   }
+  res.json({ ok: true });
+});
+
+app.delete('/admin/api/order/:id', (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ ok: false });
+  const os = DB.orders();
+  DB._write('orders', os.filter(o => o.id !== parseInt(req.params.id)));
   res.json({ ok: true });
 });
 
@@ -390,12 +395,13 @@ app.get('/admin', (req, res) => {
       sent:         orders.filter(o => o.status === 'sent').length,
       revenue:      orders.filter(o => o.status === 'sent').reduce((s, o) => s + o.price_usd, 0),
       devices:      DB.devices().length,
+      online:       countOnlineDevices(),
       credits_used: codes.filter(c => c.status === 'used').reduce((s, c) => s + c.credits, 0),
       total_orders: orders.length,
     };
   })();
 
-  const orders = DB.orders().reverse().slice(0, 100);
+  const orders = DB.orders().reverse().slice(0, 50);
 
   res.send(`
     <!DOCTYPE html>
@@ -409,10 +415,11 @@ app.get('/admin', (req, res) => {
         body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #f0ede8; padding: 20px; }
         .header { max-width: 1400px; margin: 0 auto 30px; }
         h1 { font-size: 28px; margin-bottom: 10px; }
-        .stats { max-width: 1400px; margin: 0 auto 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .stats { max-width: 1400px; margin: 0 auto 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; }
         .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; }
         .stat-label { font-size: 11px; color: #999; margin-bottom: 8px; text-transform: uppercase; }
         .stat-value { font-size: 32px; font-weight: 700; color: #e8c97a; }
+        .stat-card.online .stat-value { color: #6fcf97; }
         .orders { max-width: 1400px; margin: 0 auto; }
         h2 { margin-bottom: 15px; }
         .order-item { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
@@ -422,7 +429,6 @@ app.get('/admin', (req, res) => {
         .order-value { font-size: 14px; font-weight: 500; }
         .status-pending { color: #f0a05a; }
         .status-sent { color: #6fcf97; }
-        .status-code_generated { color: #56b4d3; }
         .order-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding-top: 12px; border-top: 1px solid #333; }
         .btn { padding: 8px 14px; background: #e8c97a; color: #1a1208; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
         .btn:hover { opacity: 0.9; transform: translateY(-1px); }
@@ -441,7 +447,7 @@ app.get('/admin', (req, res) => {
     <body>
       <div class="header">
         <h1>📊 ExamForge Admin Dashboard</h1>
-        <p style="color: #999;">Manage orders, generate codes, and send to customers</p>
+        <p style="color: #999;">Manage orders, generate codes, and monitor activity</p>
       </div>
 
       <div class="stats">
@@ -460,6 +466,10 @@ app.get('/admin', (req, res) => {
         <div class="stat-card">
           <div class="stat-label">👥 Devices</div>
           <div class="stat-value">${stats.devices}</div>
+        </div>
+        <div class="stat-card online">
+          <div class="stat-label">🟢 Online Now</div>
+          <div class="stat-value">${stats.online}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">⚡ Credits</div>
