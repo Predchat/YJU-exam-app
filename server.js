@@ -344,7 +344,7 @@ app.delete('/admin/api/order/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ADMIN PAGE — Embedded HTML (no file needed)
+// ADMIN PAGE — Embedded HTML with interactive buttons
 app.get('/admin', (req, res) => {
   if (!isAdmin(req)) {
     return res.status(401).send(`
@@ -382,7 +382,7 @@ app.get('/admin', (req, res) => {
     };
   })();
 
-  const orders = DB.orders().reverse().slice(0, 50);
+  const orders = DB.orders().reverse().slice(0, 100);
 
   res.send(`
     <!DOCTYPE html>
@@ -394,85 +394,176 @@ app.get('/admin', (req, res) => {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #f0ede8; padding: 20px; }
-        .header { max-width: 1200px; margin: 0 auto 30px; }
+        .header { max-width: 1400px; margin: 0 auto 30px; }
         h1 { font-size: 28px; margin-bottom: 10px; }
-        .stats { max-width: 1200px; margin: 0 auto 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
-        .stat-label { font-size: 12px; color: #999; margin-bottom: 8px; text-transform: uppercase; }
+        .stats { max-width: 1400px; margin: 0 auto 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; }
+        .stat-label { font-size: 11px; color: #999; margin-bottom: 8px; text-transform: uppercase; }
         .stat-value { font-size: 32px; font-weight: 700; color: #e8c97a; }
-        .orders { max-width: 1200px; margin: 0 auto; }
-        .order-table { width: 100%; border-collapse: collapse; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
-        .order-table th { background: #222; padding: 12px; text-align: left; font-weight: 600; border-bottom: 1px solid #333; }
-        .order-table td { padding: 12px; border-bottom: 1px solid #333; }
-        .order-table tr:last-child td { border-bottom: none; }
+        .orders { max-width: 1400px; margin: 0 auto; }
+        h2 { margin-bottom: 15px; }
+        .order-item { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .order-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 15px; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 12px; }
+        .order-field { }
+        .order-label { font-size: 10px; color: #999; text-transform: uppercase; margin-bottom: 3px; }
+        .order-value { font-size: 14px; font-weight: 500; }
         .status-pending { color: #f0a05a; }
         .status-sent { color: #6fcf97; }
-        .btn { padding: 6px 12px; background: #e8c97a; color: #1a1208; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 2px; }
-        .btn:hover { opacity: 0.9; }
-        .logout { margin-top: 10px; }
+        .status-code_generated { color: #56b4d3; }
+        .order-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding-top: 12px; border-top: 1px solid #333; }
+        .btn { padding: 8px 14px; background: #e8c97a; color: #1a1208; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: #333; color: #e8c97a; border: 1px solid #555; }
+        .btn-secondary:hover { background: #444; }
+        .code-box { background: #222; border: 1px solid #555; border-radius: 5px; padding: 10px 12px; font-family: monospace; font-size: 13px; font-weight: 600; color: #6fcf97; display: inline-block; margin: 0 8px; }
+        .message { padding: 12px; border-radius: 5px; margin-bottom: 12px; }
+        .message.success { background: rgba(111, 207, 151, 0.2); border: 1px solid rgba(111, 207, 151, 0.4); color: #6fcf97; }
+        .message.loading { background: rgba(86, 180, 211, 0.2); border: 1px solid rgba(86, 180, 211, 0.4); color: #56b4d3; }
+        .logout { margin-top: 30px; text-align: center; }
         a { color: #e8c97a; text-decoration: none; }
+        .empty { color: #999; padding: 40px; text-align: center; }
       </style>
     </head>
     <body>
       <div class="header">
         <h1>📊 ExamForge Admin Dashboard</h1>
-        <p style="color: #999;">Welcome back!</p>
+        <p style="color: #999;">Manage orders, generate codes, and send to customers</p>
       </div>
 
       <div class="stats">
         <div class="stat-card">
-          <div class="stat-label">Pending Orders</div>
+          <div class="stat-label">⏳ Pending</div>
           <div class="stat-value">${stats.pending}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Orders Sent</div>
+          <div class="stat-label">✅ Sent</div>
           <div class="stat-value">${stats.sent}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total Revenue</div>
+          <div class="stat-label">💰 Revenue</div>
           <div class="stat-value">$${stats.revenue.toFixed(2)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Active Devices</div>
+          <div class="stat-label">👥 Devices</div>
           <div class="stat-value">${stats.devices}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Credits Issued</div>
+          <div class="stat-label">⚡ Credits</div>
           <div class="stat-value">${stats.credits_used}</div>
         </div>
       </div>
 
       <div class="orders">
-        <h2 style="margin-bottom: 15px;">📋 Recent Orders</h2>
-        ${orders.length === 0 ? '<p style="color:#999;">No orders yet</p>' : `
-          <table class="order-table">
-            <thead>
-              <tr>
-                <th>WhatsApp</th>
-                <th>Pack</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${orders.map(o => `
-                <tr>
-                  <td>${o.whatsapp}</td>
-                  <td>${o.pack}</td>
-                  <td>$${o.price_usd}</td>
-                  <td class="status-${o.status}">${o.status.toUpperCase()}</td>
-                  <td>${new Date(o.created_at).toLocaleDateString()}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `}
+        <h2>📋 All Orders (${orders.length})</h2>
+        ${orders.length === 0 ? '<div class="empty">No orders yet</div>' : orders.map(o => `
+          <div class="order-item" id="order_${o.id}">
+            <div class="order-header">
+              <div class="order-field">
+                <div class="order-label">WhatsApp</div>
+                <div class="order-value">${o.whatsapp}</div>
+              </div>
+              <div class="order-field">
+                <div class="order-label">Pack</div>
+                <div class="order-value">${o.pack} (${o.credits} credits)</div>
+              </div>
+              <div class="order-field">
+                <div class="order-label">Price</div>
+                <div class="order-value">$${o.price_usd}</div>
+              </div>
+              <div class="order-field">
+                <div class="order-label">Status</div>
+                <div class="order-value status-${o.status}">${o.status.toUpperCase()}</div>
+              </div>
+              <div class="order-field">
+                <div class="order-label">Date</div>
+                <div class="order-value">${new Date(o.created_at).toLocaleDateString()}</div>
+              </div>
+            </div>
+            <div class="order-actions">
+              ${o.status === 'pending' ? `
+                <button class="btn" onclick="genCode(${o.id}, '${o.pack}')">⚡ Gen Code</button>
+              ` : ''}
+              ${o.code ? `
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="color:#999;">Code:</span>
+                  <span class="code-box" id="code_${o.id}">${o.code}</span>
+                  <button class="btn btn-secondary" onclick="copyCode(${o.id})">📋 Copy</button>
+                  <button class="btn btn-secondary" onclick="sendWhatsApp('${o.whatsapp}', '${o.code}')">💬 Send</button>
+                </div>
+              ` : ''}
+              ${o.status !== 'sent' && o.code ? `
+                <button class="btn" onclick="markSent(${o.id})">✅ Mark Sent</button>
+              ` : ''}
+            </div>
+            <div id="msg_${o.id}"></div>
+          </div>
+        `).join('')}
       </div>
 
-      <div class="logout" style="max-width: 1200px; margin: 30px auto 0;">
+      <div class="logout">
         <a href="/">← Back to app</a>
       </div>
+
+      <script>
+        const secret = new URLSearchParams(window.location.search).get('secret');
+        
+        function showMsg(orderId, msg, type) {
+          const el = document.getElementById('msg_' + orderId);
+          el.innerHTML = '<div class="message ' + type + '">' + msg + '</div>';
+          setTimeout(() => el.innerHTML = '', 3000);
+        }
+
+        function genCode(orderId, pack) {
+          showMsg(orderId, '⏳ Generating...', 'loading');
+          fetch('/admin/api/generate-code', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'x-admin-secret': secret},
+            body: JSON.stringify({pack, orderId})
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.ok) {
+              showMsg(orderId, '✅ Code generated: ' + d.code, 'success');
+              setTimeout(() => location.reload(), 1500);
+            } else {
+              showMsg(orderId, '❌ Error: ' + d.msg, 'error');
+            }
+          })
+          .catch(e => showMsg(orderId, '❌ Network error', 'error'));
+        }
+
+        function copyCode(orderId) {
+          const code = document.getElementById('code_' + orderId).textContent;
+          navigator.clipboard.writeText(code).then(() => {
+            showMsg(orderId, '✅ Copied!', 'success');
+          });
+        }
+
+        function sendWhatsApp(wa, code) {
+          const msg = 'Your access code is: ' + code;
+          window.open('https://wa.me/' + wa.replace(/\D/g, '') + '?text=' + encodeURIComponent(msg), '_blank');
+        }
+
+        function markSent(orderId) {
+          showMsg(orderId, '⏳ Updating...', 'loading');
+          fetch('/admin/api/mark-sent', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'x-admin-secret': secret},
+            body: JSON.stringify({orderId})
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.ok) {
+              showMsg(orderId, '✅ Marked as sent!', 'success');
+              setTimeout(() => location.reload(), 1500);
+            } else {
+              showMsg(orderId, '❌ Error', 'error');
+            }
+          })
+          .catch(e => showMsg(orderId, '❌ Network error', 'error'));
+        }
+      </script>
     </body>
     </html>
   `);
